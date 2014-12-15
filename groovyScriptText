@@ -1,0 +1,116 @@
+/* This script reads from a template Sonar file and creates a customized sonar-project.properties file
+ * for the unique job in the Jenkins workspace.  It then creates and/or reads from a build-version-TEST.txt file and increments
+ * this new build version within this script.  The order of arguments are as follows:
+ * 			1. buildType (i.e. "Major, Minor, Build, Revision, or Restart")
+ * 			2. branchPropertiesFile (i.e. "Legacy_Refactor", or "Sprint_Next")
+ * 			3. workspace (i.e. The Jenkins workspace this job is building in.)
+ * 			4. sourceDir (i.e. The location of the Sonar template file.)
+ * 			5. sonarKey (i.e. The project key for the Sonar job.)
+ * 			6. sonarName (i.e. The project Name for the Sonar job.)
+ * 			7. solution_file (i.e. The '.sln' build file for this job.) */
+
+class Bump {
+	
+		static main(args) {
+		
+			final versionRegex = ~/(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/
+			def currentVersion = "0.0.0.0"
+			def buildType = args[0]
+			def branchPropertiesFile = args[1]
+			def workspace = args[2]
+			def sourceDir = args[3]
+			def sonarKey = ("sonar.projectKey=" + args[4])
+		        def sonarName = ("sonar.projectName=" + args[5])
+			def targetDirectory = (workspace + branchPropertiesFile)
+			def oldSource = "E://Jenkins//Workspace//Sonar_Testing"						
+			def oldKey = ("sonar.projectKey=" + "A")
+			def oldName = ("sonar.projectName=" + "A")
+			def buildVersionText = new File(targetDirectory + "\\build-version-TEST.txt")
+			if (buildVersionText.exists())
+				buildVersionText.eachLine { currentVersion = it}
+				
+			
+			def buildVersion = new String();
+			boolean valid = true;
+			def intCurrentArray = currentVersion.tokenize('.').each {x -> x.toInteger()}
+			
+			switch (buildType.toUpperCase()) {
+				
+				case versionRegex:
+					buildVersion = buildType;
+					break;
+				case "MAJOR":
+					intCurrentArray[0]++;
+					intCurrentArray[1 .. 3] = intCurrentArray[1 .. 3].collect {  "0" }
+					def temp = intCurrentArray.each( {x -> x.toString()})
+					buildVersion = ((List)temp).join('.')
+					break;
+				case "MINOR":
+					intCurrentArray[1]++;
+					intCurrentArray[2 .. 3] = intCurrentArray[2 .. 3].collect {  "0" }
+					def temp = intCurrentArray.each( {x -> x.toString()})
+					buildVersion = ((List)temp).join('.')
+					break;
+				case "BUILD":
+					intCurrentArray[2]++;
+					intCurrentArray[3] = "0";
+					def temp = intCurrentArray.each( {x -> x.toString()})
+					buildVersion = ((List)temp).join('.')
+					break;
+				case "REVISION":
+					intCurrentArray[3]++;
+					def temp = intCurrentArray.each( {x -> x.toString()})
+					buildVersion = ((List)temp).join('.')
+					break;
+				case "RESTART":
+					buildVersion = "1.0.0.0"
+					break;
+					
+				default:
+					valid = false;
+					break;
+			}
+				
+				
+			if (valid) {
+				def searchPath = System.getProperty("user.dir")
+				new File(searchPath).eachFileRecurse() {
+					if (it.isFile() && it.getName() == "AssemblyInfo.cs")
+						replaceTextInFile(it, it.getName(), buildVersion, versionRegex) }
+
+				
+				def sonarPath = sourceDir
+				new File(sonarPath).eachFileRecurse() {
+					if (it.isFile() && it.getName() == "sonar-project.properties") {						
+						def newPropertiesFile = new File(branchPropertiesFile + "-Sonar-project.properties") 
+						newPropertiesFile.bytes = it.bytes
+						boolean fileMoved = newPropertiesFile.renameTo(new File(targetDirectory, newPropertiesFile.getName()));		
+						replaceTextInSonarFile(newPropertiesFile, newPropertiesFile.getName(), oldKey, sonarKey) // changes sonar.projectKey
+						replaceTextInSonarFile(newPropertiesFile, newPropertiesFile.getName(), oldName, sonarName) //changes sonar.projectName
+						replaceTextInSonarFile(newPropertiesFile, newPropertiesFile.getName(), oldSource, targetDirectory) //changes sonar.source
+						replaceTextInFile(newPropertiesFile, newPropertiesFile.getName(), buildVersion, versionRegex)} } //changes sonar.version
+				
+				buildVersionText.withWriter { w -> w.println(buildVersion) } //update build version text file
+			} else { println "Invalid Argumenent"}
+		}
+		
+		static replaceTextInSonarFile(File item, String fileName, String oldString, String newString) {
+				def f = new File(fileName + "TEMP")
+				f.withWriter { w -> item.eachLine {
+						line -> w.writeLine(line.replaceFirst(oldString, newString)); }
+				}
+				item.delete();
+				f.renameTo(item.path)
+						return 0;
+		}
+				
+		static int replaceTextInFile(File item, String fileName, String buildVersion, versionRegex) {
+			def f = new File(fileName + "TEMP")
+			f.withWriter { w -> item.eachLine {
+					line -> w.writeLine(line.replaceAll(versionRegex, buildVersion)); }
+			}
+			item.delete();
+			f.renameTo(item.path)
+						return 0;
+		}
+	}
